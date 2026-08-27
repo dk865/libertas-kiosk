@@ -1,0 +1,29 @@
+{
+  "name": "libertas-cafe-app",
+  "version": "1.0.0",
+  "description": "Personal kiosk written for a small public school's student-run cafe",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "npx serve docs -l 4173",
+    "dev": "npx vercel dev",
+    "lint": "echo \"No lint configured\"",
+    "build": "node --check docs/app.js && node --check docs/translations.js && find api shared -name \"*.js\" -print0 | xargs -0 -n1 node --check"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/dk865/libertas-kiosk"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "square": "^45.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "serve": "^14.2.6"
+  }
+}
