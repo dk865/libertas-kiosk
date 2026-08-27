@@ -1,0 +1,111 @@
+:root {
+  --bg: #f6f8fc;
+  --surface: #ffffff;
+  --accent: #1c5c9f;
+  --accent-strong: #164b81;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --danger: #b91c1c;
+  --ok: #166534;
+  --radius: 16px;
+  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+
+#app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  padding: 20px;
+}
+
+h1, h2, h3 { margin-top: 0; }
+
+button, input, select {
+  font: inherit;
+  border-radius: 12px;
+}
+
+button {
+  border: none;
+  background: var(--accent);
+  color: white;
+  padding: 12px 16px;
+  min-height: 48px;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+button:hover { background: var(--accent-strong); }
+button:disabled { background: #9ca3af; cursor: not-allowed; }
+
+.input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-image {
+  height: 130px;
+  background: #e5e7eb;
+  border-radius: 12px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.category-row {
+  display: flex;
+  overflow-x: auto;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.category-row button.active { background: #0f3d69; }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.space-between { justify-content: space-between; }
+.stack { display: grid; gap: 12px; }
+.muted { color: var(--muted); }
+.badge { padding: 6px 10px; border-radius: 999px; background: #e5e7eb; font-size: 12px; }
+.badge.unpaid { background: #fee2e2; color: var(--danger); }
+.badge.paid { background: #dcfce7; color: var(--ok); }
+
+.order-card { border-left: 6px solid #9ca3af; }
+.order-card.awaiting_payment { border-left-color: #b91c1c; }
+.order-card.paid { border-left-color: #166534; }
+.order-card.preparing { border-left-color: #1c5c9f; }
+.order-card.completed { border-left-color: #4b5563; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.modal-content {
+  width: min(700px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+@media (max-width: 768px) {
+  #app { padding: 12px; }
+}
