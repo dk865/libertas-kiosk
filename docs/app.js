@@ -1,7 +1,6 @@
 import { t } from "./translations.js";
 
 const app = document.getElementById("app");
-const mode = new URL(window.location.href).searchParams.get("mode") || "kiosk";
 
 const state = {
   backendUrl: "",
@@ -14,15 +13,25 @@ const state = {
   paymentMethod: "CASH",
   starCardStudentId: "",
   modal: null,
-  error: ""
+  error: "",
+  successMessage: ""
 };
+
+const PLACEHOLDER_SVG =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#6b7280" font-size="32" font-family="Arial">libertas café</text></svg>');
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 function money(cents) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
-}
-
-function imageOrPlaceholder(url) {
-  return url || "https://placehold.co/600x400/e5e7eb/6b7280?text=libertas+caf%C3%A9";
 }
 
 async function api(path, options = {}) {
@@ -36,7 +45,7 @@ async function api(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || "Request failed");
+    throw new Error(data.error || t("requestFailed"));
   }
   return data;
 }
@@ -54,21 +63,40 @@ function bagCount() {
   return state.bag.reduce((sum, line) => sum + line.quantity, 0);
 }
 
-function bagTotal() {
-  return state.bag.reduce((sum, line) => {
-    const modifierSum = line.selectedModifiers.reduce((acc, modifier) => acc + modifier.priceCents, 0);
-    return sum + (line.variation.priceCents + modifierSum) * line.quantity;
-  }, 0);
+function lineTotal(line) {
+  const modifierSum = line.selectedModifiers.reduce((sum, modifier) => sum + modifier.priceCents, 0);
+  return (line.variation.priceCents + modifierSum) * line.quantity;
 }
 
-function openModal(content) {
-  state.modal = content;
-  render();
+function bagTotal() {
+  return state.bag.reduce((sum, line) => sum + lineTotal(line), 0);
+}
+
+function filteredItems() {
+  return state.items.filter((item) => !state.selectedCategoryId || item.categoryId === state.selectedCategoryId);
+}
+
+function resetSession() {
+  state.customerName = "";
+  state.bag = [];
+  state.paymentMethod = "CASH";
+  state.starCardStudentId = "";
+  state.error = "";
+  state.successMessage = "";
 }
 
 function closeModal() {
+  document.querySelector(".modal")?.remove();
   state.modal = null;
-  render();
+}
+
+function showModal(html, afterRender) {
+  closeModal();
+  const host = document.createElement("div");
+  host.innerHTML = html;
+  document.body.appendChild(host.firstElementChild);
+  state.modal = true;
+  if (afterRender) afterRender();
 }
 
 async function loadCatalog() {
@@ -78,212 +106,214 @@ async function loadCatalog() {
   state.selectedCategoryId = data.categories[0]?.id || null;
 }
 
-function filteredItems() {
-  return state.items.filter((item) => !state.selectedCategoryId || item.categoryId === state.selectedCategoryId);
-}
-
 function addBagLine(item, variation, selectedModifiers) {
-  const existing = state.bag.find((line) =>
-    line.item.id === item.id &&
-    line.variation.id === variation.id &&
-    JSON.stringify(line.selectedModifiers.map((m) => m.id).sort()) === JSON.stringify(selectedModifiers.map((m) => m.id).sort())
-  );
-
+  const key = JSON.stringify([item.id, variation.id, selectedModifiers.map((mod) => mod.id).sort()]);
+  const existing = state.bag.find((line) => line.key === key);
   if (existing) {
     existing.quantity += 1;
   } else {
-    state.bag.push({ item, variation, selectedModifiers, quantity: 1 });
+    state.bag.push({ key, item, variation, selectedModifiers, quantity: 1 });
   }
-  render();
 }
 
 function openCustomize(item) {
-  const variation = item.variations.find((entry) => entry.available);
-  const selected = new Map();
+  const defaultVariation = item.variations.find((variation) => variation.available);
+  const selectedModifiersByList = new Map();
 
-  openModal(() => {
-    const lists = item.modifierLists || [];
-
-    return `
-      <div class="modal"><div class="card modal-content stack">
-        <h2>${item.name}</h2>
-        <p class="muted">${item.description || ""}</p>
-        ${lists.map((list) => {
-          return `
-            <section class="stack">
-              <h3>${list.name} ${list.minSelections > 0 ? `(required)` : ""}</h3>
-              ${list.modifiers.map((modifier) => {
-                const key = `${list.id}:${modifier.id}`;
-                return `<label class="row"><input type="checkbox" data-key="${key}" ${selected.get(key) ? "checked" : ""} ${modifier.available ? "" : "disabled"}/> ${modifier.name} (${money(modifier.priceCents)})</label>`;
-              }).join("")}
-            </section>
-          `;
-        }).join("")}
-        <div class="row space-between">
-          <button data-action="cancel">${t("back")}</button>
-          <button data-action="add">${t("addToBag")}</button>
-        </div>
-      </div></div>
-    `;
-  });
-
-  setTimeout(() => {
-    document.querySelectorAll("input[data-key]").forEach((input) => {
-      input.addEventListener("change", (event) => {
-        const key = event.target.getAttribute("data-key");
-        selected.set(key, event.target.checked);
+  showModal(
+    `<div class="modal"><div class="card modal-content stack">
+      <h2>${escapeHtml(item.name)}</h2>
+      <p class="muted">${escapeHtml(item.description || "")}</p>
+      ${(item.modifierLists || []).map((list) => `
+        <section class="stack">
+          <h3>${escapeHtml(list.name)} ${list.minSelections > 0 ? `<span class="muted">(${t("requiredTag")})</span>` : ""}</h3>
+          ${list.modifiers.map((modifier) => `
+            <label class="row">
+              <input type="checkbox" data-list="${escapeHtml(list.id)}" data-modifier="${escapeHtml(modifier.id)}" ${modifier.available ? "" : "disabled"} />
+              ${escapeHtml(modifier.name)} (${money(modifier.priceCents)})
+            </label>
+          `).join("")}
+        </section>
+      `).join("")}
+      <div class="row space-between">
+        <button data-modal-back>${t("back")}</button>
+        <button data-modal-add>${t("addToBag")}</button>
+      </div>
+    </div></div>`,
+    () => {
+      document.querySelectorAll("input[data-list][data-modifier]").forEach((input) => {
+        input.addEventListener("change", (event) => {
+          const listId = event.target.getAttribute("data-list");
+          const modifierId = event.target.getAttribute("data-modifier");
+          const selected = selectedModifiersByList.get(listId) || new Set();
+          if (event.target.checked) selected.add(modifierId);
+          else selected.delete(modifierId);
+          selectedModifiersByList.set(listId, selected);
+        });
       });
-    });
 
-    document.querySelector("button[data-action='cancel']")?.addEventListener("click", closeModal);
-    document.querySelector("button[data-action='add']")?.addEventListener("click", () => {
-      const selectedModifiers = [];
-      for (const list of lists) {
-        const selectedInList = list.modifiers.filter((modifier) => selected.get(`${list.id}:${modifier.id}`));
-        if (selectedInList.length < list.minSelections || selectedInList.length > list.maxSelections) {
-          setError(`${list.name}: select between ${list.minSelections} and ${list.maxSelections}.`);
-          return;
+      document.querySelector("[data-modal-back]")?.addEventListener("click", () => {
+        closeModal();
+      });
+
+      document.querySelector("[data-modal-add]")?.addEventListener("click", () => {
+        const selectedModifiers = [];
+        for (const list of item.modifierLists || []) {
+          const selectedSet = selectedModifiersByList.get(list.id) || new Set();
+          const selected = list.modifiers.filter((modifier) => selectedSet.has(modifier.id));
+          if (selected.length < list.minSelections || selected.length > list.maxSelections) {
+            setError(t("modifierSelectionError"));
+            return;
+          }
+          selectedModifiers.push(...selected);
         }
-        selectedModifiers.push(...selectedInList);
-      }
-      clearError();
-      addBagLine(item, variation, selectedModifiers);
-      closeModal();
-    });
-  }, 0);
+
+        clearError();
+        addBagLine(item, defaultVariation, selectedModifiers);
+        closeModal();
+        render();
+      });
+    }
+  );
 }
 
 function openBag() {
-  openModal(() => `
-    <div class="modal"><div class="card modal-content stack">
+  showModal(
+    `<div class="modal"><div class="card modal-content stack">
       <h2>${t("bag")} (${bagCount()})</h2>
-      ${state.bag.length === 0 ? `<p class="muted">Your bag is empty.</p>` : state.bag.map((line, index) => {
-        const modText = line.selectedModifiers.map((m) => m.name).join(", ");
-        const lineTotal = (line.variation.priceCents + line.selectedModifiers.reduce((sum, m) => sum + m.priceCents, 0)) * line.quantity;
-        return `
-          <article class="card stack">
-            <div class="row space-between"><strong>${line.item.name}</strong><span>${money(lineTotal)}</span></div>
-            <div class="muted">${line.variation.name}${modText ? ` · ${modText}` : ""}</div>
-            <div class="row">
-              <button data-qminus="${index}">-</button>
-              <span>${line.quantity}</span>
-              <button data-qplus="${index}">+</button>
-              <button data-remove="${index}">Remove</button>
-            </div>
-          </article>
-        `;
-      }).join("")}
-      <div class="row space-between"><strong>Total</strong><strong>${money(bagTotal())}</strong></div>
-      <div class="stack">
-        <label>${t("paymentMethod")}
-          <select id="payment-method" class="input">
-            <option value="CASH" ${state.paymentMethod === "CASH" ? "selected" : ""}>${t("cash")}</option>
-            <option value="STAR_CARDS" ${state.paymentMethod === "STAR_CARDS" ? "selected" : ""}>${t("starCards")}</option>
-          </select>
-        </label>
-        ${state.paymentMethod === "STAR_CARDS" ? `<label>${t("starCardId")}<input id="star-card-id" class="input" value="${state.starCardStudentId}" /></label>` : ""}
-      </div>
+      ${state.bag.length === 0 ? `<p class="muted">${t("emptyBag")}</p>` : state.bag.map((line, index) => `
+        <article class="card stack">
+          <div class="row space-between"><strong>${escapeHtml(line.item.name)}</strong><span>${money(lineTotal(line))}</span></div>
+          <div class="muted">${escapeHtml(line.variation.name)}${line.selectedModifiers.length ? ` · ${escapeHtml(line.selectedModifiers.map((mod) => mod.name).join(", "))}` : ""}</div>
+          <div class="row">
+            <button data-minus="${index}">-</button>
+            <span>${line.quantity}</span>
+            <button data-plus="${index}">+</button>
+            <button data-remove="${index}">${t("remove")}</button>
+          </div>
+        </article>
+      `).join("")}
+      <div class="row space-between"><strong>${t("total")}</strong><strong>${money(bagTotal())}</strong></div>
+      <label>${t("paymentMethod")}
+        <select id="payment-method" class="input">
+          <option value="CASH" ${state.paymentMethod === "CASH" ? "selected" : ""}>${t("cash")}</option>
+          <option value="STAR_CARDS" ${state.paymentMethod === "STAR_CARDS" ? "selected" : ""}>${t("starCards")}</option>
+        </select>
+      </label>
+      ${state.paymentMethod === "CASH" ? `<p class="muted">${t("cashInstructions")}</p>` : `<label>${t("starCardId")}<input id="star-id" class="input" value="${escapeHtml(state.starCardStudentId)}" /></label>`}
       <div class="row space-between">
         <button data-close>${t("back")}</button>
         <button data-checkout ${state.bag.length === 0 ? "disabled" : ""}>${t("checkout")}</button>
       </div>
-    </div></div>
-  `);
-
-  setTimeout(() => {
-    document.querySelector("[data-close]")?.addEventListener("click", closeModal);
-    document.querySelector("#payment-method")?.addEventListener("change", (event) => {
-      state.paymentMethod = event.target.value;
-      openBag();
-    });
-    document.querySelector("#star-card-id")?.addEventListener("input", (event) => {
-      state.starCardStudentId = event.target.value;
-    });
-
-    document.querySelectorAll("[data-qminus]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = Number(button.getAttribute("data-qminus"));
-        state.bag[index].quantity = Math.max(1, state.bag[index].quantity - 1);
+    </div></div>`,
+    () => {
+      document.querySelector("[data-close]")?.addEventListener("click", closeModal);
+      document.querySelector("#payment-method")?.addEventListener("change", (event) => {
+        state.paymentMethod = event.target.value;
         openBag();
       });
-    });
-
-    document.querySelectorAll("[data-qplus]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = Number(button.getAttribute("data-qplus"));
-        state.bag[index].quantity += 1;
-        openBag();
+      document.querySelector("#star-id")?.addEventListener("input", (event) => {
+        state.starCardStudentId = event.target.value;
       });
-    });
 
-    document.querySelectorAll("[data-remove]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = Number(button.getAttribute("data-remove"));
-        state.bag.splice(index, 1);
-        openBag();
+      document.querySelectorAll("[data-minus]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.getAttribute("data-minus"));
+          state.bag[index].quantity = Math.max(1, state.bag[index].quantity - 1);
+          openBag();
+        });
       });
-    });
 
-    document.querySelector("[data-checkout]")?.addEventListener("click", submitOrderConfirm);
-  }, 0);
+      document.querySelectorAll("[data-plus]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.getAttribute("data-plus"));
+          state.bag[index].quantity += 1;
+          openBag();
+        });
+      });
+
+      document.querySelectorAll("[data-remove]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.getAttribute("data-remove"));
+          state.bag.splice(index, 1);
+          openBag();
+        });
+      });
+
+      document.querySelector("[data-checkout]")?.addEventListener("click", submitOrderConfirm);
+    }
+  );
 }
 
-function toSubmitPayload() {
+function createOrderPayload() {
   return {
     customerName: state.customerName,
     paymentMethod: state.paymentMethod,
-    starCardStudentId: state.starCardStudentId || undefined,
+    starCardStudentId: state.paymentMethod === "STAR_CARDS" ? state.starCardStudentId.trim() : undefined,
     idempotencyKey: crypto.randomUUID(),
     items: state.bag.map((line) => ({
       itemId: line.item.id,
       variationId: line.variation.id,
       quantity: line.quantity,
-      modifierIds: line.selectedModifiers.map((m) => m.id)
+      modifierIds: line.selectedModifiers.map((mod) => mod.id)
     }))
   };
 }
 
 function submitOrderConfirm() {
   if (state.paymentMethod === "STAR_CARDS" && !state.starCardStudentId.trim()) {
-    setError("Please provide your student ID for star-card validation.");
+    setError(t("starCardRequired"));
     return;
   }
 
-  openModal(() => `
-    <div class="modal"><div class="card modal-content stack">
+  showModal(
+    `<div class="modal"><div class="card modal-content stack">
       <h2>${t("finalConfirm")}</h2>
-      <p><strong>${state.customerName}</strong></p>
-      ${state.bag.map((line) => `<div>${line.quantity} × ${line.item.name}</div>`).join("")}
-      <p><strong>Total: ${money(bagTotal())}</strong></p>
-      <p>Payment: ${state.paymentMethod === "CASH" ? t("cash") : t("starCards")}</p>
+      <label class="row"><input id="confirm-check" type="checkbox" /> ${t("confirmChecklist")}</label>
+      <p><strong>${escapeHtml(state.customerName)}</strong></p>
+      ${state.bag.map((line) => `<div>${line.quantity} × ${escapeHtml(line.item.name)}</div>`).join("")}
+      <p><strong>${t("total")}: ${money(bagTotal())}</strong></p>
+      <p>${t("paymentMethod")}: ${state.paymentMethod === "CASH" ? t("cash") : t("starCards")}</p>
       <div class="row space-between">
         <button data-back>${t("back")}</button>
-        <button data-submit>${t("placeOrder")}</button>
+        <button data-submit disabled>${t("placeOrder")}</button>
       </div>
-    </div></div>
-  `);
+    </div></div>`,
+    () => {
+      const checkbox = document.querySelector("#confirm-check");
+      const submitButton = document.querySelector("[data-submit]");
+      checkbox?.addEventListener("change", () => {
+        submitButton.disabled = !checkbox.checked;
+      });
 
+      document.querySelector("[data-back]")?.addEventListener("click", openBag);
+      submitButton?.addEventListener("click", async () => {
+        try {
+          clearError();
+          submitButton.disabled = true;
+          const payload = createOrderPayload();
+          await api("/api/orders", {
+            method: "POST",
+            body: JSON.stringify(payload)
+          });
+          closeModal();
+          state.successMessage = state.paymentMethod === "CASH" ? t("orderSubmittedCash") : t("orderSubmittedStar");
+          resetAfterSuccess();
+          renderSuccess();
+        } catch (error) {
+          setError(error.message);
+          openBag();
+        }
+      });
+    }
+  );
+}
+
+function resetAfterSuccess() {
   setTimeout(() => {
-    document.querySelector("[data-back]")?.addEventListener("click", openBag);
-    document.querySelector("[data-submit]")?.addEventListener("click", async () => {
-      try {
-        clearError();
-        const payload = toSubmitPayload();
-        await api("/api/orders", {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
-        state.bag = [];
-        state.paymentMethod = "CASH";
-        state.starCardStudentId = "";
-        closeModal();
-        renderSuccess();
-      } catch (error) {
-        setError(error.message);
-        openBag();
-      }
-    });
-  }, 0);
+    resetSession();
+    render();
+  }, 3000);
 }
 
 function renderConnection() {
@@ -291,40 +321,41 @@ function renderConnection() {
     <section class="card stack">
       <h1>${t("startupTitle")}</h1>
       <p class="muted">${t("startupSubtitle")}</p>
-      <label>${t("backendAddress")}<input id="backend" class="input" placeholder="https://your-vercel-app.vercel.app"/></label>
+      <label>${t("backendAddress")}<input id="backend-url" class="input" placeholder="https://your-vercel-backend.vercel.app" aria-label="${t("backendAddress")}" /></label>
       <div class="row">
-        <button id="test-btn">${t("testConnection")}</button>
-        <button id="continue-btn" disabled>${t("continueToKiosk")}</button>
+        <button id="test-connection">${t("testConnection")}</button>
+        <button id="continue" disabled>${t("continueToKiosk")}</button>
       </div>
-      ${state.error ? `<p class="muted" style="color:#b91c1c;">${state.error}</p>` : ""}
+      ${state.error ? `<p class="muted" style="color:#b91c1c;">${escapeHtml(state.error)}</p>` : ""}
     </section>
   `;
 
-  const input = document.getElementById("backend");
-  const test = document.getElementById("test-btn");
-  const proceed = document.getElementById("continue-btn");
-
-  test.addEventListener("click", async () => {
+  document.querySelector("#test-connection")?.addEventListener("click", async () => {
     try {
       clearError();
-      state.backendUrl = input.value.trim().replace(/\/$/, "");
+      const backend = document.querySelector("#backend-url").value.trim().replace(/\/$/, "");
+      if (!backend) {
+        setError(t("connectionFail"));
+        return;
+      }
+      state.backendUrl = backend;
       await api("/api/health");
-      proceed.disabled = false;
+      document.querySelector("#continue").disabled = false;
       setError(t("connectionSuccess"));
     } catch {
-      proceed.disabled = true;
+      document.querySelector("#continue").disabled = true;
       setError(t("connectionFail"));
     }
   });
 
-  proceed.addEventListener("click", async () => {
+  document.querySelector("#continue")?.addEventListener("click", async () => {
     try {
+      clearError();
       await loadCatalog();
       state.connected = true;
-      clearError();
       render();
     } catch {
-      setError("Unable to load menu from Square.");
+      setError(t("menuLoadFail"));
     }
   });
 }
@@ -334,51 +365,53 @@ function renderWelcome() {
     <section class="card stack">
       <h1>${t("welcomeTitle")}</h1>
       <p class="muted">${t("welcomeSubtitle")}</p>
-      <label>${t("yourName")}<input id="name" class="input" maxlength="64" /></label>
-      <button id="name-continue">${t("continue")}</button>
-      ${state.error ? `<p class="muted" style="color:#b91c1c;">${state.error}</p>` : ""}
+      <label>${t("yourName")}<input id="customer-name" class="input" maxlength="64" aria-label="${t("yourName")}" /></label>
+      <button id="continue-name">${t("continue")}</button>
+      ${state.error ? `<p class="muted" style="color:#b91c1c;">${escapeHtml(state.error)}</p>` : ""}
     </section>
   `;
 
-  document.getElementById("name-continue")?.addEventListener("click", () => {
-    const value = document.getElementById("name").value.trim();
-    if (!value) {
-      setError("Please enter your name.");
+  document.querySelector("#continue-name")?.addEventListener("click", () => {
+    const customerName = document.querySelector("#customer-name").value.trim();
+    if (!customerName) {
+      setError(t("nameRequired"));
       return;
     }
+
+    state.customerName = customerName;
     clearError();
-    state.customerName = value;
     render();
   });
 }
 
 function renderMenu() {
-  const categories = state.categories;
-  const items = filteredItems();
-
   app.innerHTML = `
-    <header class="row space-between card">
+    <header class="card row space-between">
       <div>
         <strong>${t("appName")}</strong>
-        <div class="muted">${state.customerName}</div>
+        <div class="muted">${escapeHtml(state.customerName)}</div>
       </div>
-      <button id="bag-btn">${t("bag")} (${bagCount()})</button>
+      <button id="bag-open">${t("bag")} (${bagCount()})</button>
     </header>
-    <nav class="category-row">
-      ${categories.map((category) => `<button data-category="${category.id}" class="${state.selectedCategoryId === category.id ? "active" : ""}">${category.name}</button>`).join("")}
+    <nav class="category-row" aria-label="Categories">
+      ${state.categories.map((category) => `<button data-category="${escapeHtml(category.id)}" class="${state.selectedCategoryId === category.id ? "active" : ""}">${escapeHtml(category.name)}</button>`).join("")}
     </nav>
-    ${state.error ? `<p class="muted" style="color:#b91c1c;">${state.error}</p>` : ""}
+    ${state.error ? `<p class="muted" style="color:#b91c1c;">${escapeHtml(state.error)}</p>` : ""}
     <section class="grid">
-      ${items.map((item) => {
-        const price = Math.min(...item.variations.filter((entry) => entry.available).map((entry) => entry.priceCents));
+      ${filteredItems().map((item) => {
+        const availableVariations = item.variations.filter((variation) => variation.available);
+        const startingPrice = availableVariations.length > 0
+          ? Math.min(...availableVariations.map((variation) => variation.priceCents))
+          : 0;
+
         return `
           <article class="card item-card">
-            <img class="item-image" src="${imageOrPlaceholder(item.imageUrl)}" alt="${item.name}"/>
-            <strong>${item.name}</strong>
-            <div class="muted">${item.description || ""}</div>
+            <img class="item-image" src="${escapeHtml(item.imageUrl || PLACEHOLDER_SVG)}" alt="${escapeHtml(item.name)}" />
+            <strong>${escapeHtml(item.name)}</strong>
+            <div class="muted">${escapeHtml(item.description || "")}</div>
             <div class="row space-between">
-              <strong>${money(Number.isFinite(price) ? price : 0)}</strong>
-              ${item.available ? `<button data-item="${item.id}">${t("addToBag")}</button>` : `<span class="badge unpaid">${t("unavailable")}</span>`}
+              <strong>${money(startingPrice)}</strong>
+              ${item.available ? `<button data-item="${escapeHtml(item.id)}">${t("addToBag")}</button>` : `<span class="badge unpaid">${t("unavailable")}</span>`}
             </div>
           </article>
         `;
@@ -386,7 +419,7 @@ function renderMenu() {
     </section>
   `;
 
-  document.getElementById("bag-btn")?.addEventListener("click", openBag);
+  document.querySelector("#bag-open")?.addEventListener("click", openBag);
 
   document.querySelectorAll("button[data-category]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -397,9 +430,8 @@ function renderMenu() {
 
   document.querySelectorAll("button[data-item]").forEach((button) => {
     button.addEventListener("click", () => {
-      const item = state.items.find((entry) => entry.id === button.getAttribute("data-item"));
-      if (!item) return;
-      openCustomize(item);
+      const selected = state.items.find((item) => item.id === button.getAttribute("data-item"));
+      if (selected) openCustomize(selected);
     });
   });
 }
@@ -408,113 +440,22 @@ function renderSuccess() {
   app.innerHTML = `
     <section class="card stack">
       <h1>${t("orderReceived")}</h1>
+      <p>${escapeHtml(state.successMessage || t("thankYou"))}</p>
       <p>${t("thankYou")}</p>
     </section>
   `;
-
-  setTimeout(() => {
-    state.customerName = "";
-    state.bag = [];
-    state.paymentMethod = "CASH";
-    state.starCardStudentId = "";
-    state.error = "";
-    render();
-  }, 3000);
-}
-
-async function renderEmployee(modeType) {
-  app.innerHTML = `<section class="card"><h1>${modeType === "cashier" ? t("cashierView") : t("kdsView")}</h1><p class="muted">Loading…</p></section>`;
-  if (!state.connected) {
-    return renderConnection();
-  }
-
-  try {
-    const { orders } = await api("/api/orders");
-    app.innerHTML = `
-      <header class="card row space-between">
-        <strong>${t("appName")}</strong>
-        <span class="muted">${modeType === "cashier" ? t("cashierView") : t("kdsView")}</span>
-      </header>
-      <section class="grid" style="margin-top:16px;">
-        ${orders.map((order) => `
-          <article class="card order-card ${order.status}">
-            <h3>${order.customerName}</h3>
-            <p class="muted">#${order.orderId}</p>
-            <p>${order.lineItems.map((line) => `${line.quantity}× ${line.name}${line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""}`).join("<br/>")}</p>
-            <div class="row space-between"><strong>${money(order.amountDueCents)}</strong><span class="badge ${order.paymentStatus === "paid" ? "paid" : "unpaid"}">${order.paymentStatus}</span></div>
-            <div class="row">
-              ${modeType === "cashier" && order.paymentStatus !== "paid" ? `<button data-pay="${order.orderId}" data-amount="${order.amountDueCents}">${t("markPaid")}</button>` : ""}
-              ${modeType === "kds" && order.paymentStatus === "paid" && order.status !== "preparing" && order.status !== "completed" ? `<button data-prep="${order.orderId}">${t("startPreparing")}</button>` : ""}
-              ${modeType === "kds" && order.status === "preparing" ? `<button data-done="${order.orderId}">${t("markCompleted")}</button>` : ""}
-            </div>
-          </article>
-        `).join("")}
-      </section>
-    `;
-
-    document.querySelectorAll("button[data-pay]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        await api("/api/orders-pay", {
-          method: "POST",
-          body: JSON.stringify({
-            orderId: button.getAttribute("data-pay"),
-            amountCents: Number(button.getAttribute("data-amount"))
-          })
-        });
-        renderEmployee(modeType);
-      });
-    });
-
-    document.querySelectorAll("button[data-prep]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        await api("/api/orders-status", {
-          method: "POST",
-          body: JSON.stringify({ orderId: button.getAttribute("data-prep"), status: "preparing" })
-        });
-        renderEmployee(modeType);
-      });
-    });
-
-    document.querySelectorAll("button[data-done]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        await api("/api/orders-status", {
-          method: "POST",
-          body: JSON.stringify({ orderId: button.getAttribute("data-done"), status: "completed" })
-        });
-        renderEmployee(modeType);
-      });
-    });
-  } catch (error) {
-    app.innerHTML = `<section class="card"><h1>Error</h1><p class="muted">${error.message}</p></section>`;
-  }
-
-  setTimeout(() => renderEmployee(modeType), 5000);
-}
-
-function renderModal() {
-  if (!state.modal) return;
-  const host = document.createElement("div");
-  host.innerHTML = typeof state.modal === "function" ? state.modal() : state.modal;
-  document.body.appendChild(host.firstElementChild);
 }
 
 function render() {
-  document.querySelector(".modal")?.remove();
-
-  if (mode === "cashier" || mode === "kds") {
-    renderEmployee(mode);
-    return;
-  }
-
   if (!state.connected) {
     renderConnection();
-  } else if (!state.customerName) {
-    renderWelcome();
-  } else {
-    renderMenu();
+    return;
   }
-
-  renderModal();
+  if (!state.customerName) {
+    renderWelcome();
+    return;
+  }
+  renderMenu();
 }
 
 render();
