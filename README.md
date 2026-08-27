@@ -62,14 +62,9 @@ Operational flow is through Square’s built-in employee tooling:
 
 ## Star cards
 
-- Redemption path is backend-validated only.
-- Backend requires at least 10 cards for redemption.
-- Discount is represented on the Square order (order-level discount applied to order lines).
-- Redemption dedupe uses idempotency key checks.
-- `api/_lib/starCards.js` isolates card balance provider behind an interface.
-
-Current default provider is memory-based (`STAR_CARD_PROVIDER=memory`) for development.
-For production, replace with the school’s real star-card balance system.
+- Star-card tracking and redemption are handled offline by staff.
+- Students turn in physical cards at pickup/cashier.
+- The kiosk records the selected payment method only; no online balance checks or redemptions occur.
 
 ## Environment variables
 
@@ -80,9 +75,6 @@ Copy `.env.example` to `.env` for local/dev:
 - `SQUARE_LOCATION_ID` — Square location ID
 - `SQUARE_CURRENCY` — currency code (default `USD`)
 - `FRONTEND_ORIGIN` — GitHub Pages origin for CORS
-- `STAR_CARD_PROVIDER` — currently `memory`
-- `STAR_CARD_MEMORY_JSON` — JSON seed balances for development
-- `STAR_CARD_ELIGIBLE_CATEGORY_IDS` — optional CSV category ID allow-list
 
 ## Square setup
 
@@ -147,7 +139,6 @@ npm run dev
 `test/business.test.js` validates:
 - modifier min/max/availability checks
 - line + order total cent calculations
-- most-expensive eligible item selection for star-card discount
 
 ## Security
 
@@ -162,4 +153,4 @@ npm run dev
 - **Connection test fails**: verify backend URL and Vercel deployment health.
 - **Catalog load fails**: confirm Square credentials/scopes/location ID.
 - **Order validation fails**: item/modifier/inventory likely changed in Square; refresh and retry.
-- **Star-card rejection**: confirm backend provider and student balance source.
+- **Star-card questions**: confirm staff are collecting physical cards offline.
