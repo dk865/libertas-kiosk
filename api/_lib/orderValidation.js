@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   calculateLinePriceCents,
   calculateOrderTotalCents,
+  chooseMostExpensiveItem,
   validateModifierSelection
 } from "../../shared/business.js";
 
@@ -68,10 +69,16 @@ export function buildValidatedOrder(payload, catalog) {
   }
 
   const subtotalCents = calculateOrderTotalCents(lines);
+  const redemptionLine = payload.paymentMethod === "STAR_CARDS"
+    ? chooseMostExpensiveItem(lines)
+    : null;
+  const starCardDiscountCents = redemptionLine ? redemptionLine.unitPriceCents : 0;
 
   return {
     lines,
     subtotalCents,
-    totalCents: subtotalCents
+    starCardDiscountCents,
+    totalCents: Math.max(0, subtotalCents - starCardDiscountCents),
+    redemptionLine
   };
 }

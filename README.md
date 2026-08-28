@@ -64,7 +64,8 @@ Operational flow is through Square’s built-in employee tooling:
 
 - Star-card tracking and redemption are handled offline by staff.
 - Students turn in physical cards at pickup/cashier.
-- The kiosk records the selected payment method only; no online balance checks or redemptions occur.
+- No online balance checks or redemptions occur.
+- For star-card orders, the backend applies a Square order discount equal to the most expensive item’s unit price.
 
 ## Environment variables
 
@@ -153,4 +154,4 @@ npm run dev
 - **Connection test fails**: verify backend URL and Vercel deployment health.
 - **Catalog load fails**: confirm Square credentials/scopes/location ID.
 - **Order validation fails**: item/modifier/inventory likely changed in Square; refresh and retry.
-- **Star-card questions**: confirm staff are collecting physical cards offline.
+- **Star-card questions**: confirm staff are collecting physical cards offline and that Square discounts appear on star-card orders.

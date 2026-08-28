@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calculateLinePriceCents,
   calculateOrderTotalCents,
+  chooseMostExpensiveItem,
   validateModifierSelection
 } from "../shared/business.js";
 
@@ -28,4 +29,13 @@ test("line and order totals are calculated in cents", () => {
   assert.equal(lineA, 250);
   assert.equal(lineB, 300);
   assert.equal(calculateOrderTotalCents([{ lineTotalCents: lineA }, { lineTotalCents: lineB }]), 550);
+});
+
+test("most expensive item is selected for star-card discount", () => {
+  const selected = chooseMostExpensiveItem([
+    { unitPriceCents: 400, categoryId: "drinks" },
+    { unitPriceCents: 300, categoryId: "snacks" }
+  ]);
+
+  assert.equal(selected.unitPriceCents, 400);
 });

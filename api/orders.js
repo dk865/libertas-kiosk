@@ -56,6 +56,24 @@ export default async function handler(req, res) {
       ]
     };
 
+    if (validated.starCardDiscountCents > 0) {
+      squareOrder.discounts = [
+        {
+          uid: "star-card-discount",
+          name: "Star Card Redemption",
+          amountMoney: {
+            amount: validated.starCardDiscountCents,
+            currency: config.currency
+          },
+          scope: "ORDER"
+        }
+      ];
+      squareOrder.lineItems = squareOrder.lineItems.map((line) => ({
+        ...line,
+        appliedDiscounts: [{ discountUid: "star-card-discount" }]
+      }));
+    }
+
     const created = unwrapSquareResult(
       await client.orders.createOrder({
         idempotencyKey: payload.idempotencyKey,

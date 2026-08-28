@@ -23,7 +23,7 @@ const en = {
   cash: "Cash",
   cashInstructions: "Bring your cash to the cashier after placing the order.",
   starCards: "Star cards",
-  starCardsInstructions: "Turn in your physical star cards to staff after placing the order.",
+  starCardsInstructions: "Turn in your physical star cards to staff after placing the order. The most expensive item will be discounted in Square.",
   finalConfirm: "Confirm order",
   confirmChecklist: "I confirm my order is correct.",
   back: "Back",
@@ -35,7 +35,7 @@ const en = {
   orderReceived: "Order received!",
   thankYou: "Thank you for visiting libertas café.",
   orderSubmittedCash: "Your order was sent. Please bring cash to the cashier.",
-  orderSubmittedStar: "Your order was sent. Please hand your star cards to the cashier.",
+  orderSubmittedStar: "Your order was sent. Please hand your star cards to the cashier; the most expensive item discount is tracked in Square.",
   requestFailed: "Something went wrong. Please try again."
 };
 

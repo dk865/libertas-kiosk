@@ -20,3 +20,10 @@ export function calculateLinePriceCents(basePriceCents, modifierPricesCents, qua
 export function calculateOrderTotalCents(lines) {
   return lines.reduce((sum, line) => sum + line.lineTotalCents, 0);
 }
+
+export function chooseMostExpensiveItem(orderLines) {
+  if (orderLines.length === 0) return null;
+  return orderLines.reduce((best, current) =>
+    current.unitPriceCents > best.unitPriceCents ? current : best
+  );
+}
