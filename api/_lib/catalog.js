@@ -2,7 +2,7 @@ import { squareClient, unwrapSquareResult } from "./square.js";
 
 export async function fetchCatalog(config) {
   const client = squareClient(config);
-  const objectTypes = ["CATEGORY", "ITEM", "ITEM_VARIATION", "MODIFIER", "MODIFIER_LIST", "IMAGE"];
+  const objectTypes = "CATEGORY,ITEM,ITEM_VARIATION,MODIFIER,MODIFIER_LIST,IMAGE";
   const objects = [];
   let cursor;
   do {
