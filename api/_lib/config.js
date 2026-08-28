@@ -10,12 +10,6 @@ export function getConfig() {
     squareLocationId: process.env.SQUARE_LOCATION_ID,
     squareEnvironment: (process.env.SQUARE_ENVIRONMENT || "sandbox").toLowerCase(),
     currency: process.env.SQUARE_CURRENCY || "USD",
-    frontendOrigin: process.env.FRONTEND_ORIGIN || "*",
-    starCardProvider: process.env.STAR_CARD_PROVIDER || "memory",
-    starCardMemoryJson: process.env.STAR_CARD_MEMORY_JSON || "{}",
-    starCardEligibleCategoryIds: (process.env.STAR_CARD_ELIGIBLE_CATEGORY_IDS || "")
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
+    frontendOrigin: process.env.FRONTEND_ORIGIN || "*"
   };
 }

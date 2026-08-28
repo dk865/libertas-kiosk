@@ -3,7 +3,6 @@ import { getConfig } from "./_lib/config.js";
 import { fetchCatalog } from "./_lib/catalog.js";
 import { parseJson, handlePreflight, sendJson } from "./_lib/http.js";
 import { squareClient, unwrapSquareResult } from "./_lib/square.js";
-import { createStarCardProvider } from "./_lib/starCards.js";
 import { buildValidatedOrder, submitOrderSchema } from "./_lib/orderValidation.js";
 
 const submissionCache = new Map();
@@ -33,24 +32,8 @@ export default async function handler(req, res) {
       return sendJson(req, res, 200, submissionCache.get(payload.idempotencyKey), config.frontendOrigin);
     }
 
-    if (payload.paymentMethod === "STAR_CARDS" && !payload.starCardStudentId) {
-      return sendJson(req, res, 400, { error: "Star card ID is required for star-card payment." }, config.frontendOrigin);
-    }
-
     const catalog = await fetchCatalog(config);
-    const validated = buildValidatedOrder(payload, catalog, config);
-
-    if (payload.paymentMethod === "STAR_CARDS") {
-      const provider = createStarCardProvider(config);
-      const balance = await provider.getBalance(payload.starCardStudentId);
-      if (balance < 10) {
-        return sendJson(req, res, 400, { error: "You need at least 10 star cards to redeem this order." }, config.frontendOrigin);
-      }
-      const redemption = await provider.redeem(payload.starCardStudentId, 10, payload.idempotencyKey);
-      if (!redemption.ok) {
-        return sendJson(req, res, 409, { error: redemption.reason }, config.frontendOrigin);
-      }
-    }
+    const validated = buildValidatedOrder(payload, catalog);
 
     const client = squareClient(config);
     const squareOrder = {
@@ -58,7 +41,7 @@ export default async function handler(req, res) {
       source: { name: "libertas-cafe-kiosk" },
       lineItems: lineItemsForSquare(validated),
       note: payload.paymentMethod === "STAR_CARDS"
-        ? `libertas café kiosk order - star-card redemption - customer: ${payload.customerName}`
+        ? `libertas café kiosk order - star cards (offline) - customer: ${payload.customerName}`
         : `libertas café kiosk order - cash - customer: ${payload.customerName}`,
       fulfillments: [
         {
@@ -100,7 +83,7 @@ export default async function handler(req, res) {
 
     const responsePayload = {
       orderId: created.order?.id,
-      status: payload.paymentMethod === "CASH" ? "awaiting_payment" : "paid",
+      status: "awaiting_payment",
       totalCents: validated.totalCents,
       confirmationCode: randomUUID().slice(0, 8),
       squareOrderVersion: created.order?.version

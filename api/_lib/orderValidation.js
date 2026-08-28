@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   calculateLinePriceCents,
   calculateOrderTotalCents,
-  chooseMostExpensiveEligibleItem,
+  chooseMostExpensiveItem,
   validateModifierSelection
 } from "../../shared/business.js";
 
@@ -10,7 +10,6 @@ export const submitOrderSchema = z.object({
   customerName: z.string().trim().min(1).max(64),
   paymentMethod: z.enum(["CASH", "STAR_CARDS"]),
   idempotencyKey: z.string().min(10),
-  starCardStudentId: z.string().trim().optional(),
   items: z.array(z.object({
     itemId: z.string().min(1),
     variationId: z.string().min(1),
@@ -19,7 +18,7 @@ export const submitOrderSchema = z.object({
   })).min(1)
 });
 
-export function buildValidatedOrder(payload, catalog, config) {
+export function buildValidatedOrder(payload, catalog) {
   const lines = [];
 
   for (const requestLine of payload.items) {
@@ -70,10 +69,10 @@ export function buildValidatedOrder(payload, catalog, config) {
   }
 
   const subtotalCents = calculateOrderTotalCents(lines);
-  const redemptionLine = chooseMostExpensiveEligibleItem(lines, config.starCardEligibleCategoryIds);
-  const starCardDiscountCents = payload.paymentMethod === "STAR_CARDS" && redemptionLine
-    ? redemptionLine.unitPriceCents
-    : 0;
+  const redemptionLine = payload.paymentMethod === "STAR_CARDS"
+    ? chooseMostExpensiveItem(lines)
+    : null;
+  const starCardDiscountCents = redemptionLine ? redemptionLine.unitPriceCents : 0;
 
   return {
     lines,

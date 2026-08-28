@@ -21,10 +21,9 @@ export function calculateOrderTotalCents(lines) {
   return lines.reduce((sum, line) => sum + line.lineTotalCents, 0);
 }
 
-export function chooseMostExpensiveEligibleItem(orderLines, eligibleCategoryIds) {
-  const eligible = orderLines.filter((line) => eligibleCategoryIds.length === 0 || eligibleCategoryIds.includes(line.categoryId));
-  if (eligible.length === 0) return null;
-  return eligible.reduce((best, current) =>
+export function chooseMostExpensiveItem(orderLines) {
+  if (orderLines.length === 0) return null;
+  return orderLines.reduce((best, current) =>
     current.unitPriceCents > best.unitPriceCents ? current : best
   );
 }

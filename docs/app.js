@@ -11,7 +11,6 @@ const state = {
   selectedCategoryId: null,
   bag: [],
   paymentMethod: "CASH",
-  starCardStudentId: "",
   modal: null,
   error: "",
   successMessage: ""
@@ -80,7 +79,6 @@ function resetSession() {
   state.customerName = "";
   state.bag = [];
   state.paymentMethod = "CASH";
-  state.starCardStudentId = "";
   state.error = "";
   state.successMessage = "";
 }
@@ -200,7 +198,7 @@ function openBag() {
           <option value="STAR_CARDS" ${state.paymentMethod === "STAR_CARDS" ? "selected" : ""}>${t("starCards")}</option>
         </select>
       </label>
-      ${state.paymentMethod === "CASH" ? `<p class="muted">${t("cashInstructions")}</p>` : `<label>${t("starCardId")}<input id="star-id" class="input" value="${escapeHtml(state.starCardStudentId)}" /></label>`}
+      <p class="muted">${state.paymentMethod === "CASH" ? t("cashInstructions") : t("starCardsInstructions")}</p>
       <div class="row space-between">
         <button data-close>${t("back")}</button>
         <button data-checkout ${state.bag.length === 0 ? "disabled" : ""}>${t("checkout")}</button>
@@ -212,10 +210,6 @@ function openBag() {
         state.paymentMethod = event.target.value;
         openBag();
       });
-      document.querySelector("#star-id")?.addEventListener("input", (event) => {
-        state.starCardStudentId = event.target.value;
-      });
-
       document.querySelectorAll("[data-minus]").forEach((button) => {
         button.addEventListener("click", () => {
           const index = Number(button.getAttribute("data-minus"));
@@ -249,7 +243,6 @@ function createOrderPayload() {
   return {
     customerName: state.customerName,
     paymentMethod: state.paymentMethod,
-    starCardStudentId: state.paymentMethod === "STAR_CARDS" ? state.starCardStudentId.trim() : undefined,
     idempotencyKey: crypto.randomUUID(),
     items: state.bag.map((line) => ({
       itemId: line.item.id,
@@ -261,11 +254,6 @@ function createOrderPayload() {
 }
 
 function submitOrderConfirm() {
-  if (state.paymentMethod === "STAR_CARDS" && !state.starCardStudentId.trim()) {
-    setError(t("starCardRequired"));
-    return;
-  }
-
   showModal(
     `<div class="modal"><div class="card modal-content stack">
       <h2>${t("finalConfirm")}</h2>
