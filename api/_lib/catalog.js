@@ -95,8 +95,9 @@ export async function fetchCatalog(config) {
       );
       for await (const count of inventory) {
         const current = Number(count.quantity);
-        const available = count.state === "IN_STOCK" && (!Number.isNaN(current) ? current > 0 : true);
-        if (!inventoryMap.has(count.catalogObjectId)) inventoryMap.set(count.catalogObjectId, available);
+        const catalogObjectId = count.catalogObjectId || count.catalog_object_id;
+        const available = count.state === "IN_STOCK" && Number.isFinite(current) && current > 0;
+        if (catalogObjectId && !inventoryMap.has(catalogObjectId)) inventoryMap.set(catalogObjectId, available);
       }
     } catch (error) {
       console.error("Square inventory lookup failed", {
@@ -135,7 +136,12 @@ export async function fetchCatalog(config) {
       const variations = catalogVariations.map((variation) => {
         const variationData = variation.itemVariationData || {};
         const trackedAvailable = inventoryMap.get(variation.id);
-        const available = trackedAvailable ?? (variationData.trackInventory ? false : !variation.isDeleted);
+        const locationExcluded = variationData.presentAtAllLocations === false
+          && !(variationData.presentAtLocationIds || []).includes(config.squareLocationId);
+        const locationBlocked = (variationData.absentAtLocationIds || []).includes(config.squareLocationId);
+        const available = locationExcluded || locationBlocked
+          ? false
+          : trackedAvailable ?? (variationData.trackInventory ? false : !variation.isDeleted);
         return {
           id: variation.id,
           name: variationData.name || item.itemData?.name || "Regular",

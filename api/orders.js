@@ -57,18 +57,7 @@ export default async function handler(req, res) {
       lineItems: lineItemsForSquare(validated),
       note: payload.paymentMethod === "STAR_CARDS"
         ? `libertas café kiosk order - star cards (offline) - customer: ${payload.customerName}`
-        : `libertas café kiosk order - cash - customer: ${payload.customerName}`,
-      fulfillments: [
-        {
-          type: "PICKUP",
-          state: "PROPOSED",
-          pickupDetails: {
-            recipient: {
-              displayName: payload.customerName
-            }
-          }
-        }
-      ]
+        : `libertas café kiosk order - cash - customer: ${payload.customerName}`
     };
 
     if (validated.starCardDiscountCents > 0) {
@@ -77,7 +66,7 @@ export default async function handler(req, res) {
           uid: "star-card-discount",
           name: "Star Card Redemption",
           amountMoney: {
-            amount: validated.starCardDiscountCents,
+            amount: BigInt(validated.starCardDiscountCents),
             currency: config.currency
           },
           scope: "ORDER"
@@ -108,7 +97,7 @@ export default async function handler(req, res) {
     return sendJson(req, res, 200, responsePayload);
   } catch (error) {
     const details = squareErrorDetails(error);
-    const isSquareError = Boolean(details.category || details.code || details.httpStatus);
+    const isSquareError = Boolean(details.category || details.code || details.httpStatus || error?.name === "SquareError");
     if (isSquareError) {
       console.error("Square order request failed", {
         ...details,
