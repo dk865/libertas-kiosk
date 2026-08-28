@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { getConfig } from "./_lib/config.js";
+import { getAuthConfig, getConfig } from "./_lib/config.js";
+import { isAuthenticated } from "./_lib/auth.js";
 import { fetchCatalog } from "./_lib/catalog.js";
 import { parseJson, handlePreflight, sendJson } from "./_lib/http.js";
 import { squareClient, unwrapSquareResult } from "./_lib/square.js";
@@ -19,17 +20,19 @@ function lineItemsForSquare(validated) {
 
 export default async function handler(req, res) {
   const config = getConfig();
-  if (handlePreflight(req, res, config.frontendOrigin)) return;
+  if (handlePreflight(req, res)) return;
+  const auth = getAuthConfig();
+  if (!isAuthenticated(req, auth.sessionSecret)) return sendJson(req, res, 401, { error: "Authentication required." });
 
   if (req.method !== "POST") {
-    return sendJson(req, res, 405, { error: "Method not allowed" }, config.frontendOrigin);
+    return sendJson(req, res, 405, { error: "Method not allowed" });
   }
 
   try {
     const payload = submitOrderSchema.parse(await parseJson(req));
 
     if (submissionCache.has(payload.idempotencyKey)) {
-      return sendJson(req, res, 200, submissionCache.get(payload.idempotencyKey), config.frontendOrigin);
+      return sendJson(req, res, 200, submissionCache.get(payload.idempotencyKey));
     }
 
     const catalog = await fetchCatalog(config);
@@ -90,10 +93,10 @@ export default async function handler(req, res) {
     };
 
     submissionCache.set(payload.idempotencyKey, responsePayload);
-    return sendJson(req, res, 200, responsePayload, config.frontendOrigin);
+    return sendJson(req, res, 200, responsePayload);
   } catch {
     return sendJson(req, res, 400, {
       error: "Order validation failed. Please review your order and try again."
-    }, config.frontendOrigin);
+    });
   }
 }

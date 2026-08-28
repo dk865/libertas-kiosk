@@ -1,15 +1,11 @@
 # libertas café kiosk
 
-Production kiosk web app for **libertas café** with a static GitHub Pages frontend and a Vercel backend that integrates with Square using the official SDK.
+Production kiosk web app for **libertas café**, hosted as one Vercel application with a static frontend and serverless Square integration.
 
 ## Architecture
 
 ```text
-GitHub Pages (static kiosk UI)
-        |
-        | HTTPS (runtime-selected backend URL, never persisted)
-        v
-Vercel Serverless API
+Vercel (static kiosk UI + serverless API)
         |
         | Official Square SDK / APIs
         v
@@ -30,7 +26,7 @@ The frontend never stores or trusts authoritative prices/inventory/totals.
 
 ## What this repository contains
 
-- `docs/` — static kiosk frontend (GitHub Pages hostable)
+- `docs/` — static kiosk frontend served at the Vercel application root
 - `api/` — Vercel backend routes and Square integration
 - `shared/` — reusable order/business validation utilities
 - `test/` — focused tests for core business logic
@@ -38,10 +34,9 @@ The frontend never stores or trusts authoritative prices/inventory/totals.
 
 ## Kiosk flow
 
-1. Startup backend URL screen (entered every launch, not persisted).
-2. Connection test (`/api/health`).
-3. Branded welcome screen (`libertas café`) and required customer name.
-4. Dynamic menu loaded from Square catalog (`/api/catalog`).
+1. Server-side kiosk password screen.
+2. Branded welcome screen (`libertas café`) and required customer name.
+3. Dynamic menu loaded from Square catalog (`/api/catalog`).
 5. Item customization using Square modifier lists/rules.
 6. Bag review, quantity edits, payment method selection (cash or star cards).
 7. Final confirmation with explicit checkbox before submit.
@@ -75,7 +70,8 @@ Copy `.env.example` to `.env` for local/dev:
 - `SQUARE_ACCESS_TOKEN` — Square access token (backend only)
 - `SQUARE_LOCATION_ID` — Square location ID
 - `SQUARE_CURRENCY` — currency code (default `USD`)
-- `FRONTEND_ORIGIN` — GitHub Pages origin for CORS
+- `KIOSK_PASSWORD` — kiosk password, server-only
+- `KIOSK_SESSION_SECRET` — long random secret used to sign kiosk sessions, server-only
 
 ## Square setup
 
@@ -120,17 +116,14 @@ npm run dev
 
 ## Deployment
 
-### GitHub Pages (frontend)
-- publish `docs/` as the Pages source
-- frontend contains no secrets and no embedded backend URL
-
-### Vercel (backend)
-- import repository
+### Vercel
+- import the repository root
 - configure environment variables from `.env.example`
-- deploy serverless API routes under `/api/*`
+- Vercel serves `docs/` at `/` through `vercel.json` and detects `api/` functions automatically
 
 ## API routes
 
+- `POST /api/auth` — creates the authenticated kiosk session cookie
 - `GET /api/health` — connectivity check
 - `GET /api/catalog` — Square-backed categories/items/modifiers/images/prices/availability
 - `POST /api/orders` — validates and submits order to Square
@@ -144,14 +137,14 @@ npm run dev
 ## Security
 
 - Square credentials are backend-only.
-- CORS is controlled by `FRONTEND_ORIGIN`.
+- The kiosk and API use the same origin; catalog and orders require a signed HttpOnly session cookie.
 - Server-side schema and business validation on every order.
 - Idempotency key path to prevent accidental duplicate submissions.
 - No secrets are stored in frontend code or browser persistence.
 
 ## Troubleshooting
 
-- **Connection test fails**: verify backend URL and Vercel deployment health.
+- **Kiosk unlock fails**: verify `KIOSK_PASSWORD` and `KIOSK_SESSION_SECRET` in the Vercel environment.
 - **Catalog load fails**: confirm Square credentials/scopes/location ID.
 - **Order validation fails**: item/modifier/inventory likely changed in Square; refresh and retry.
 - **Star-card questions**: confirm staff are collecting physical cards offline and that Square discounts appear on star-card orders.

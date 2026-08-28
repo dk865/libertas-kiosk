@@ -3,8 +3,7 @@ import { t } from "./translations.js";
 const app = document.getElementById("app");
 
 const state = {
-  backendUrl: "",
-  connected: false,
+  authenticated: false,
   customerName: "",
   categories: [],
   items: [],
@@ -34,7 +33,7 @@ function money(cents) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(`${state.backendUrl}${path}`, {
+  const response = await fetch(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -307,42 +306,29 @@ function resetAfterSuccess() {
   }, 3000);
 }
 
-function renderConnection() {
+function renderPassword() {
   app.innerHTML = `
     <section class="card stack">
-      <h1>${t("startupTitle")}</h1>
-      <p class="muted">${t("startupSubtitle")}</p>
-      <label>${t("backendAddress")}<input id="backend-url" class="input" placeholder="https://your-vercel-backend.vercel.app" aria-label="${t("backendAddress")}" /></label>
-      <div class="row">
-        <button id="test-connection">${t("testConnection")}</button>
-        <button id="continue" disabled>${t("continueToKiosk")}</button>
-      </div>
+      <h1>${t("passwordTitle")}</h1>
+      <p class="muted">${t("passwordSubtitle")}</p>
+      <label>${t("passwordLabel")}<input id="kiosk-password" class="input" type="password" autocomplete="current-password" aria-label="${t("passwordLabel")}" /></label>
+      <button id="unlock-kiosk">${t("unlockKiosk")}</button>
       ${state.error ? `<p class="muted" style="color:#b91c1c;">${escapeHtml(state.error)}</p>` : ""}
     </section>
   `;
 
-  document.querySelector("#test-connection")?.addEventListener("click", async () => {
+  document.querySelector("#unlock-kiosk")?.addEventListener("click", async () => {
     try {
       clearError();
-      const backend = document.querySelector("#backend-url").value.trim().replace(/\/$/, "");
-      if (!backend) {
-        setError(t("connectionFail"));
-        return;
-      }
-      state.backendUrl = backend;
-      await api("/api/health");
-      document.querySelector("#continue").disabled = false;
-      setError(t("connectionSuccess"));
-    } catch {
-      document.querySelector("#continue").disabled = true;
-      setError(t("connectionFail"));
+      await api("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ password: document.querySelector("#kiosk-password").value })
+      });
+      state.authenticated = true;
+      render();
+    } catch (error) {
+      setError(error.message || t("authenticationFailed"));
     }
-  });
-
-  document.querySelector("#continue")?.addEventListener("click", async () => {
-    clearError();
-    state.connected = true;
-    render();
   });
 }
 
@@ -439,8 +425,8 @@ function renderSuccess() {
 }
 
 function render() {
-  if (!state.connected) {
-    renderConnection();
+  if (!state.authenticated) {
+    renderPassword();
     return;
   }
   if (!state.customerName) {

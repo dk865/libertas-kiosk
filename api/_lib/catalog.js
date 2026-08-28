@@ -2,20 +2,29 @@ import { squareClient, unwrapSquareResult } from "./square.js";
 
 export async function fetchCatalog(config) {
   const client = squareClient(config);
-  const result = unwrapSquareResult(
-    await client.catalog.searchCatalogObjects({
-      objectTypes: ["CATEGORY", "ITEM", "MODIFIER", "MODIFIER_LIST", "IMAGE"],
-      includeRelatedObjects: true
-    })
-  );
-
-  const objects = [...(result.objects || []), ...(result.relatedObjects || [])];
+  const objectTypes = ["CATEGORY", "ITEM", "ITEM_VARIATION", "MODIFIER", "MODIFIER_LIST", "IMAGE"];
+  const objects = [];
+  let cursor;
+  do {
+    const result = unwrapSquareResult(await client.catalog.list({ types: objectTypes, cursor }));
+    objects.push(...(result.objects || []));
+    cursor = result.cursor;
+  } while (cursor);
   const byType = (type) => objects.filter((o) => o.type === type);
 
   const categoryMap = new Map();
   const imageMap = new Map();
   const modifierMap = new Map();
   const modifierListMap = new Map();
+  const standaloneVariationsByItem = new Map();
+
+  byType("ITEM_VARIATION").forEach((variation) => {
+    const itemId = variation.itemVariationData?.itemId;
+    if (!itemId) return;
+    const variations = standaloneVariationsByItem.get(itemId) || [];
+    variations.push(variation);
+    standaloneVariationsByItem.set(itemId, variations);
+  });
 
   byType("CATEGORY").forEach((category, index) => {
     categoryMap.set(category.id, {
@@ -55,7 +64,10 @@ export async function fetchCatalog(config) {
   const variationIds = [];
   const itemObjects = byType("ITEM");
   for (const item of itemObjects) {
-    for (const variation of item.itemData?.variations || []) {
+    const variations = item.itemData?.variations?.length
+      ? item.itemData.variations
+      : standaloneVariationsByItem.get(item.id) || [];
+    for (const variation of variations) {
       if (variation.id) variationIds.push(variation.id);
     }
   }
@@ -96,7 +108,10 @@ export async function fetchCatalog(config) {
         })
         .filter(Boolean);
 
-      const variations = (item.itemData?.variations || []).map((variation) => {
+      const catalogVariations = item.itemData?.variations?.length
+        ? item.itemData.variations
+        : standaloneVariationsByItem.get(item.id) || [];
+      const variations = catalogVariations.map((variation) => {
         const variationData = variation.itemVariationData || {};
         const trackedAvailable = inventoryMap.get(variation.id);
         const available = trackedAvailable ?? !variation.isDeleted;
