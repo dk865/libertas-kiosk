@@ -284,6 +284,9 @@ function submitOrderConfirm() {
             method: "POST",
             body: JSON.stringify(payload)
           });
+          try {
+            await loadCatalog();
+          } catch {}
           closeModal();
           state.successMessage = state.paymentMethod === "CASH" ? t("orderSubmittedCash") : t("orderSubmittedStar");
           resetAfterSuccess();
@@ -337,14 +340,9 @@ function renderConnection() {
   });
 
   document.querySelector("#continue")?.addEventListener("click", async () => {
-    try {
-      clearError();
-      await loadCatalog();
-      state.connected = true;
-      render();
-    } catch {
-      setError(t("menuLoadFail"));
-    }
+    clearError();
+    state.connected = true;
+    render();
   });
 }
 
@@ -359,16 +357,22 @@ function renderWelcome() {
     </section>
   `;
 
-  document.querySelector("#continue-name")?.addEventListener("click", () => {
+  document.querySelector("#continue-name")?.addEventListener("click", async () => {
     const customerName = document.querySelector("#customer-name").value.trim();
     if (!customerName) {
       setError(t("nameRequired"));
       return;
     }
 
-    state.customerName = customerName;
-    clearError();
-    render();
+    try {
+      clearError();
+      state.customerName = customerName;
+      await loadCatalog();
+      render();
+    } catch {
+      state.customerName = "";
+      setError(t("menuLoadFail"));
+    }
   });
 }
 
