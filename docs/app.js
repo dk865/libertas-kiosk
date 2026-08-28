@@ -10,14 +10,13 @@ const state = {
   selectedCategoryId: null,
   bag: [],
   paymentMethod: "CASH",
-  modal: null,
   error: "",
   successMessage: ""
 };
 
-const PLACEHOLDER_SVG =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#6b7280" font-size="32" font-family="Arial">libertas café</text></svg>');
+const PLACEHOLDER_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="100%" height="100%" fill="#f4e5cf"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#a54b2a" font-size="32" font-family="sans-serif">libertas cafe</text></svg>'
+);
 
 function escapeHtml(value) {
   return String(value)
@@ -84,7 +83,6 @@ function resetSession() {
 
 function closeModal() {
   document.querySelector(".modal")?.remove();
-  state.modal = null;
 }
 
 function showModal(html, afterRender) {
@@ -92,7 +90,6 @@ function showModal(html, afterRender) {
   const host = document.createElement("div");
   host.innerHTML = html;
   document.body.appendChild(host.firstElementChild);
-  state.modal = true;
   if (afterRender) afterRender();
 }
 
@@ -100,7 +97,7 @@ async function loadCatalog() {
   const data = await api("/api/catalog");
   state.categories = data.categories;
   state.items = data.items;
-  state.selectedCategoryId = data.categories[0]?.id || null;
+  state.selectedCategoryId = null;
 }
 
 function addBagLine(item, variation, selectedModifiers) {
@@ -114,13 +111,17 @@ function addBagLine(item, variation, selectedModifiers) {
 }
 
 function openCustomize(item) {
-  const defaultVariation = item.variations.find((variation) => variation.available);
+  const availableVariations = item.variations.filter((variation) => variation.available);
+  let selectedVariation = availableVariations[0];
   const selectedModifiersByList = new Map();
 
   showModal(
     `<div class="modal"><div class="card modal-content stack">
+      <button class="sheet-close" data-modal-back aria-label="${t("close")}">×</button>
+      <p class="eyebrow">${t("customize")}</p>
       <h2>${escapeHtml(item.name)}</h2>
       <p class="muted">${escapeHtml(item.description || "")}</p>
+      ${item.variations.length > 1 ? `<fieldset class="choice-group"><legend>${t("options")}</legend>${item.variations.map((variation, index) => `<label class="choice ${variation.available ? "" : "disabled-choice"}"><input type="radio" name="variation" data-variation="${escapeHtml(variation.id)}" ${variation.available && index === item.variations.findIndex((entry) => entry.available) ? "checked" : ""} ${variation.available ? "" : "disabled"}/><span>${escapeHtml(variation.name)}${variation.available ? "" : ` <small>${t("unavailable")}</small>`}</span><strong>${money(variation.priceCents)}</strong></label>`).join("")}</fieldset>` : ""}
       ${(item.modifierLists || []).map((list) => `
         <section class="stack">
           <h3>${escapeHtml(list.name)} ${list.minSelections > 0 ? `<span class="muted">(${t("requiredTag")})</span>` : ""}</h3>
@@ -133,8 +134,7 @@ function openCustomize(item) {
         </section>
       `).join("")}
       <div class="row space-between">
-        <button data-modal-back>${t("back")}</button>
-        <button data-modal-add>${t("addToBag")}</button>
+        <button data-modal-add ${availableVariations.length ? "" : "disabled"}>${availableVariations.length ? t("addToBag") : t("soldOut")}</button>
       </div>
     </div></div>`,
     () => {
@@ -149,9 +149,11 @@ function openCustomize(item) {
         });
       });
 
-      document.querySelector("[data-modal-back]")?.addEventListener("click", () => {
-        closeModal();
-      });
+      document.querySelectorAll("[data-variation]").forEach((input) => input.addEventListener("change", () => {
+        selectedVariation = item.variations.find((variation) => variation.id === input.getAttribute("data-variation"));
+      }));
+
+      document.querySelector("[data-modal-back]")?.addEventListener("click", closeModal);
 
       document.querySelector("[data-modal-add]")?.addEventListener("click", () => {
         const selectedModifiers = [];
@@ -166,7 +168,7 @@ function openCustomize(item) {
         }
 
         clearError();
-        addBagLine(item, defaultVariation, selectedModifiers);
+        addBagLine(item, selectedVariation, selectedModifiers);
         closeModal();
         render();
       });
@@ -372,15 +374,14 @@ function renderMenu() {
       <button id="bag-open">${t("bag")} (${bagCount()})</button>
     </header>
     <nav class="category-row" aria-label="Categories">
+      <button data-category="" class="${state.selectedCategoryId === null ? "active" : ""}">${t("allItems")}</button>
       ${state.categories.map((category) => `<button data-category="${escapeHtml(category.id)}" class="${state.selectedCategoryId === category.id ? "active" : ""}">${escapeHtml(category.name)}</button>`).join("")}
     </nav>
     ${state.error ? `<p class="muted" style="color:#b91c1c;">${escapeHtml(state.error)}</p>` : ""}
     <section class="grid">
       ${filteredItems().map((item) => {
         const availableVariations = item.variations.filter((variation) => variation.available);
-        const startingPrice = availableVariations.length > 0
-          ? Math.min(...availableVariations.map((variation) => variation.priceCents))
-          : 0;
+        const startingPrice = Math.min(...(availableVariations.length > 0 ? availableVariations : item.variations).map((variation) => variation.priceCents));
 
         return `
           <article class="card item-card">

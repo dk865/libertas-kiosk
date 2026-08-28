@@ -8,6 +8,18 @@ import { buildValidatedOrder, submitOrderSchema } from "./_lib/orderValidation.j
 
 const submissionCache = new Map();
 
+function squareErrorDetails(error) {
+  const firstError = error?.errors?.[0] ?? error?.body?.errors?.[0];
+  return {
+    category: firstError?.category,
+    code: firstError?.code,
+    detail: firstError?.detail,
+    httpStatus: error?.statusCode ?? error?.status ?? error?.response?.status,
+    name: error?.name,
+    message: error?.message
+  };
+}
+
 function lineItemsForSquare(validated) {
   return validated.lines.map((line) => ({
     catalogObjectId: line.variationId,
@@ -78,7 +90,7 @@ export default async function handler(req, res) {
     }
 
     const created = unwrapSquareResult(
-      await client.orders.createOrder({
+      await client.orders.create({
         idempotencyKey: payload.idempotencyKey,
         order: squareOrder
       })
@@ -94,7 +106,19 @@ export default async function handler(req, res) {
 
     submissionCache.set(payload.idempotencyKey, responsePayload);
     return sendJson(req, res, 200, responsePayload);
-  } catch {
+  } catch (error) {
+    const details = squareErrorDetails(error);
+    const isSquareError = Boolean(details.category || details.code || details.httpStatus);
+    if (isSquareError) {
+      console.error("Square order request failed", {
+        ...details,
+        operation: "CreateOrder",
+        environment: config.squareEnvironment,
+        locationIdConfigured: Boolean(config.squareLocationId),
+        accessTokenConfigured: Boolean(config.squareAccessToken)
+      });
+      return sendJson(req, res, 502, { error: "Unable to submit order to Square." });
+    }
     return sendJson(req, res, 400, {
       error: "Order validation failed. Please review your order and try again."
     });

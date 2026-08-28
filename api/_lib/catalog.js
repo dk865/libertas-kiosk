@@ -65,8 +65,10 @@ export async function fetchCatalog(config) {
     modifierListMap.set(list.id, {
       id: list.id,
       name: list.modifierListData?.name || "Options",
-      minSelections: Number(list.modifierListData?.minSelectedModifiers || 0),
-      maxSelections: Number(list.modifierListData?.maxSelectedModifiers || modifiers.length),
+      minSelections: Math.max(0, Number(list.modifierListData?.minSelectedModifiers ?? 0)),
+      maxSelections: Number(list.modifierListData?.maxSelectedModifiers) >= 0
+        ? Number(list.modifierListData.maxSelectedModifiers)
+        : modifiers.length,
       modifiers
     });
   });
@@ -86,21 +88,28 @@ export async function fetchCatalog(config) {
   if (variationIds.length > 0) {
     try {
       const inventory = unwrapSquareResult(
-        await client.inventory.batchRetrieveInventoryCounts({
+        await client.inventory.batchGetCounts({
           catalogObjectIds: variationIds,
           locationIds: [config.squareLocationId]
         })
       );
-      for (const count of inventory.counts || []) {
-        const current = Number(count.quantity || 0);
-        inventoryMap.set(count.catalogObjectId, current > 0);
+      for await (const count of inventory) {
+        const current = Number(count.quantity);
+        const available = count.state === "IN_STOCK" && (!Number.isNaN(current) ? current > 0 : true);
+        if (!inventoryMap.has(count.catalogObjectId)) inventoryMap.set(count.catalogObjectId, available);
       }
-    } catch {
+    } catch (error) {
+      console.error("Square inventory lookup failed", {
+        category: error?.errors?.[0]?.category ?? error?.body?.errors?.[0]?.category,
+        code: error?.errors?.[0]?.code ?? error?.body?.errors?.[0]?.code,
+        detail: error?.errors?.[0]?.detail ?? error?.body?.errors?.[0]?.detail,
+        operation: "BatchGetInventoryCounts",
+        environment: config.squareEnvironment,
+        locationIdConfigured: Boolean(config.squareLocationId)
+      });
       // inventory can be unavailable depending on account permissions
     }
   }
-
-  const categories = [...categoryMap.values()].sort((a, b) => a.ordinal - b.ordinal);
 
   const items = itemObjects
     .map((item) => {
@@ -112,8 +121,10 @@ export async function fetchCatalog(config) {
           if (!base) return null;
           return {
             ...base,
-            minSelections: Number(entry.minSelectedModifiers ?? base.minSelections),
-            maxSelections: Number(entry.maxSelectedModifiers ?? base.maxSelections)
+            minSelections: Math.max(0, Number(entry.minSelectedModifiers ?? base.minSelections)),
+            maxSelections: Number(entry.maxSelectedModifiers) >= 0
+              ? Number(entry.maxSelectedModifiers)
+              : base.maxSelections
           };
         })
         .filter(Boolean);
@@ -124,7 +135,7 @@ export async function fetchCatalog(config) {
       const variations = catalogVariations.map((variation) => {
         const variationData = variation.itemVariationData || {};
         const trackedAvailable = inventoryMap.get(variation.id);
-        const available = trackedAvailable ?? !variation.isDeleted;
+        const available = trackedAvailable ?? (variationData.trackInventory ? false : !variation.isDeleted);
         return {
           id: variation.id,
           name: variationData.name || item.itemData?.name || "Regular",
@@ -145,6 +156,11 @@ export async function fetchCatalog(config) {
       };
     })
     .filter((item) => item.variations.length > 0);
+
+  const usedCategoryIds = new Set(items.map((item) => item.categoryId).filter(Boolean));
+  const categories = [...categoryMap.values()]
+    .filter((category) => usedCategoryIds.has(category.id))
+    .sort((a, b) => a.ordinal - b.ordinal);
 
   return { categories, items };
 }
