@@ -2,23 +2,23 @@ import { squareClient, unwrapSquareResult } from "./square.js";
 
 export async function fetchCatalog(config) {
   const client = squareClient(config);
-  const objectTypes = "CATEGORY,ITEM,ITEM_VARIATION,MODIFIER,MODIFIER_LIST,IMAGE";
+  const objectTypes = ["CATEGORY", "ITEM", "ITEM_VARIATION", "MODIFIER", "MODIFIER_LIST", "IMAGE"];
   const objects = [];
   let cursor;
   do {
     const rawResult = await client.catalog.list({ types: objectTypes, cursor });
 
-const result = unwrapSquareResult(rawResult);
-
-console.log("square catalog response", {
-
-  objectCount: result?.objects?.length ?? 0,
-
-  objectTypes: [...new Set((result?.objects ?? []).map((object) => object.type))]
-
-});
-    objects.push(...(result?.objects ?? []));
-    cursor = result.cursor;
+    if (rawResult?.[Symbol.asyncIterator]) {
+      for await (const entry of rawResult) {
+        if (entry?.type) objects.push(entry);
+        else objects.push(...(entry?.objects ?? []));
+      }
+      cursor = undefined;
+    } else {
+      const result = unwrapSquareResult(rawResult);
+      objects.push(...(result?.objects ?? []));
+      cursor = result?.cursor;
+    }
   } while (cursor);
   const byType = (type) => objects.filter((o) => o.type === type);
 
