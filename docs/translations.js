@@ -11,6 +11,7 @@ const en = {
   included: "Included",
   madeFresh: "Made fresh for you.",
   soldOut: "Sold out",
+  noCustomizableOptions: "No customizable options available for this item.",
   allItems: "Everything",
   menuEyebrow: "Take your time",
   menuSubtitle: "Choose a favorite, then customize it your way.",

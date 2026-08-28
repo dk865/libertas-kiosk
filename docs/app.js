@@ -90,6 +90,9 @@ function showModal(html, afterRender) {
   const host = document.createElement("div");
   host.innerHTML = html;
   document.body.appendChild(host.firstElementChild);
+  document.querySelector(".modal")?.addEventListener("click", (event) => {
+    if (event.target.classList.contains("modal")) closeModal();
+  });
   if (afterRender) afterRender();
 }
 
@@ -121,6 +124,7 @@ function openCustomize(item) {
       <p class="eyebrow">${t("customize")}</p>
       <h2>${escapeHtml(item.name)}</h2>
       <p class="muted">${escapeHtml(item.description || "")}</p>
+      ${item.variations.length === 1 && !(item.modifierLists || []).length ? `<p class="muted option-note">${t("noCustomizableOptions")}</p>` : ""}
       ${item.variations.length > 1 ? `<fieldset class="choice-group"><legend>${t("options")}</legend>${item.variations.map((variation, index) => `<label class="choice ${variation.available ? "" : "disabled-choice"}"><input type="radio" name="variation" data-variation="${escapeHtml(variation.id)}" ${variation.available && index === item.variations.findIndex((entry) => entry.available) ? "checked" : ""} ${variation.available ? "" : "disabled"}/><span>${escapeHtml(variation.name)}${variation.available ? "" : ` <small>${t("unavailable")}</small>`}</span><strong>${money(variation.priceCents)}</strong></label>`).join("")}</fieldset>` : ""}
       ${(item.modifierLists || []).map((list) => `
         <section class="stack">
@@ -128,7 +132,7 @@ function openCustomize(item) {
           ${list.modifiers.map((modifier) => `
             <label class="row">
               <input type="checkbox" data-list="${escapeHtml(list.id)}" data-modifier="${escapeHtml(modifier.id)}" ${modifier.available ? "" : "disabled"} />
-              ${escapeHtml(modifier.name)} (${money(modifier.priceCents)})
+              ${escapeHtml(modifier.name)}${modifier.available ? ` (${money(modifier.priceCents)})` : ` <span class="sold-out-note">(${escapeHtml(modifier.availabilityNote || t("soldOut"))})</span>`}
             </label>
           `).join("")}
         </section>

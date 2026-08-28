@@ -53,7 +53,8 @@ export async function fetchCatalog(config) {
       id: modifier.id,
       name: modifier.modifierData?.name || "Modifier",
       priceCents: Number(modifier.modifierData?.priceMoney?.amount || 0),
-      available: !modifier.isDeleted
+      available: !modifier.isDeleted,
+      availabilityNote: modifier.isDeleted ? "Sold out" : null
     });
   });
 
@@ -73,23 +74,23 @@ export async function fetchCatalog(config) {
     });
   });
 
-  const variationIds = [];
+  const inventoryObjectIds = byType("MODIFIER").map((modifier) => modifier.id).filter(Boolean);
   const itemObjects = byType("ITEM");
   for (const item of itemObjects) {
     const variations = item.itemData?.variations?.length
       ? item.itemData.variations
       : standaloneVariationsByItem.get(item.id) || [];
     for (const variation of variations) {
-      if (variation.id) variationIds.push(variation.id);
+      if (variation.id) inventoryObjectIds.push(variation.id);
     }
   }
 
   const inventoryMap = new Map();
-  if (variationIds.length > 0) {
+  if (inventoryObjectIds.length > 0) {
     try {
       const inventory = unwrapSquareResult(
         await client.inventory.batchGetCounts({
-          catalogObjectIds: variationIds,
+          catalogObjectIds: inventoryObjectIds,
           locationIds: [config.squareLocationId]
         })
       );
@@ -110,6 +111,12 @@ export async function fetchCatalog(config) {
       });
       // inventory can be unavailable depending on account permissions
     }
+  }
+
+  for (const modifier of modifierMap.values()) {
+    if (!inventoryMap.has(modifier.id)) continue;
+    modifier.available = inventoryMap.get(modifier.id);
+    modifier.availabilityNote = modifier.available ? null : "Sold out";
   }
 
   const items = itemObjects
@@ -146,7 +153,8 @@ export async function fetchCatalog(config) {
           id: variation.id,
           name: variationData.name || item.itemData?.name || "Regular",
           priceCents: Number(variationData.priceMoney?.amount || 0),
-          available
+          available,
+          availabilityNote: available ? null : "Sold out"
         };
       });
 
