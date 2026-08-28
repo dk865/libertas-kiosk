@@ -6,8 +6,18 @@ export async function fetchCatalog(config) {
   const objects = [];
   let cursor;
   do {
-    const result = unwrapSquareResult(await client.catalog.list({ types: objectTypes, cursor }));
-    objects.push(...(result.objects || []));
+    const rawResult = await client.catalog.list({ types: objectTypes, cursor });
+
+const result = unwrapSquareResult(rawResult);
+
+console.log("square catalog response", {
+
+  objectCount: result?.objects?.length ?? 0,
+
+  objectTypes: [...new Set((result?.objects ?? []).map((object) => object.type))]
+
+});
+    objects.push(...(result?.objects ?? []));
     cursor = result.cursor;
   } while (cursor);
   const byType = (type) => objects.filter((o) => o.type === type);
